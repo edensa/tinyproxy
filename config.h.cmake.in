@@ -1,0 +1,21 @@
+#ifndef TINYPROXY_CMAKE_CONFIG_H
+#define TINYPROXY_CMAKE_CONFIG_H
+
+#define PACKAGE "tinyproxy"
+#define PACKAGE_NAME "Tinyproxy"
+#define PACKAGE_VERSION "@PROJECT_VERSION@"
+#define VERSION PACKAGE_VERSION
+#define TINYPROXY_VERSION PACKAGE_VERSION
+#define TINYPROXY_STATHOST "tinyproxy.stats"
+
+#cmakedefine HAVE_STRLCPY 1
+#cmakedefine HAVE_SETGROUPS 1
+#cmakedefine HAVE_FTRUNCATE 1
+#cmakedefine HAVE_ALLOCA_H 1
+#cmakedefine HAVE_MEMORY_H 1
+#cmakedefine HAVE_POLL_H 1
+#cmakedefine HAVE_SYS_IOCTL_H 1
+#cmakedefine HAVE_SYSEXITS_H 1
+#cmakedefine HAVE_VALUES_H 1
+
+#endif
