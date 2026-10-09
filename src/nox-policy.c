@@ -56,7 +56,11 @@ static int hostname_valid (const char *host, int pattern)
 
 static int classify (const char *host, unsigned char *addr)
 {
-        int family = parse_address (host, addr);
+        int family;
+        if (!strcasecmp (host, "localhost") || !strcasecmp (host, "localhost.")) {
+                if (inet_pton (AF_INET, "127.0.0.1", addr) == 1) return AF_INET;
+        }
+        family = parse_address (host, addr);
         if (family) return family;
 
         if (host[0] >= '0' && host[0] <= '9') {
@@ -200,7 +204,7 @@ int nox_host_allowed (const struct nox_rule *rules, const char *host, int port)
 {
         unsigned char ip[16];
         int family = classify (host, ip);
-        size_t len;
+        size_t len, i;
         char normalized[254];
         if (!family || port < 1 || port > 65535) return 0;
         if (family != 1) {
@@ -212,7 +216,7 @@ int nox_host_allowed (const struct nox_rule *rules, const char *host, int port)
         }
         len = strlen (host);
         if (host[len - 1] == '.') --len;
-        for (size_t i = 0; i < len; ++i)
+        for (i = 0; i < len; ++i)
                 normalized[i] = tolower ((unsigned char) host[i]);
         normalized[len] = '\0';
         for (; rules; rules = rules->next)

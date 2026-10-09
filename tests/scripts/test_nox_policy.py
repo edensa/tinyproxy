@@ -111,16 +111,9 @@ class NoxPolicyTest(unittest.TestCase):
         self.launch(f'NoxAllow 127.0.0.0/8 {self.target_port}')
         for method in ('GET', 'CONNECT'):
             self.assertIn(b'nox policy target', self.request('127.0.0.1', method))
-            self.assertIn(b' 403 ', self.request('localhost', method).split(b'\r\n', 1)[0])
+            self.assertIn(b'nox policy target', self.request('localhost', method))
 
-    def test_hostname_needs_glob_and_cidr_for_private_dns(self):
-        self.launch(f'NoxAllow *host {self.target_port}\n'
-                    f'NoxAllow 127.0.0.0/8 {self.target_port}')
-        for method in ('GET', 'CONNECT'):
-            self.assertIn(b'nox policy target', self.request('LOCALHOST.', method))
-            self.assertIn(b'nox policy target', self.request('127.0.0.1', method))
-
-    def test_hostname_glob_alone_does_not_allow_private_dns(self):
+    def test_domain_glob_does_not_authorize_localhost_literal(self):
         self.launch(f'NoxAllow *host {self.target_port}')
         for method in ('GET', 'CONNECT'):
             self.assertIn(b' 403 ', self.request('localhost', method).split(b'\r\n', 1)[0])
