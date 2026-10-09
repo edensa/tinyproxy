@@ -33,6 +33,7 @@
 #include "sock.h"
 #include "text.h"
 #include "conf.h"
+#include "nox-policy.h"
 #include "loop.h"
 #include "sblist.h"
 
@@ -133,13 +134,19 @@ void set_socket_timeout(int fd) {
  * the getaddrinfo() library function, which allows for a protocol
  * independent implementation (mostly for IPv4 and IPv6 addresses.)
  */
-int opensock (const char *host, int port, const char *bind_to)
+static int opensock_impl (const char *host, int port, const char *bind_to,
+                          int policy)
 {
         int sockfd, n;
         struct addrinfo hints, *res, *ressave;
         char portstr[6];
+        int permitted = 0, last_error = 0;
 
         assert (host != NULL);
+        if (policy && !nox_host_allowed (config->nox_rules, host, port)) {
+                errno = EACCES;
+                return -1;
+        }
         assert (port > 0);
 
         log_message(LOG_INFO,
@@ -163,6 +170,10 @@ int opensock (const char *host, int port, const char *bind_to)
 
         ressave = res;
         do {
+                if (policy && !nox_address_allowed (config->nox_rules, host,
+                                                    port, res->ai_addr))
+                        continue;
+                permitted = 1;
                 sockfd =
                     socket (res->ai_family, res->ai_socktype, res->ai_protocol);
                 if (sockfd < 0)
@@ -197,19 +208,32 @@ int opensock (const char *host, int port, const char *bind_to)
                         break;  /* success */
 		}
 
+                last_error = errno;
                 close (sockfd);
         } while ((res = res->ai_next) != NULL);
 
+        if (!permitted && policy) last_error = EACCES;
         freeaddrinfo (ressave);
         if (res == NULL) {
                 log_message (LOG_ERR,
                              "opensock: Could not establish a connection to %s:%d",
                              host,
                              port);
+                if (last_error) errno = last_error;
                 return -1;
         }
 
         return sockfd;
+}
+
+int opensock (const char *host, int port, const char *bind_to)
+{
+        return opensock_impl (host, port, bind_to, 0);
+}
+
+int opensock_policy (const char *host, int port, const char *bind_to)
+{
+        return opensock_impl (host, port, bind_to, 1);
 }
 
 /**

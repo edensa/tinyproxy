@@ -26,6 +26,7 @@
 #include "common.h"
 #include <regex.h>
 #include "conf.h"
+#include "nox-policy.h"
 
 #include "acl.h"
 #include "anonymous.h"
@@ -131,6 +132,8 @@ static HANDLE_FUNC (handle_defaulterrorfile);
 static HANDLE_FUNC (handle_deny);
 static HANDLE_FUNC (handle_errorfile);
 static HANDLE_FUNC (handle_addheader);
+static HANDLE_FUNC (handle_noxpolicy);
+static HANDLE_FUNC (handle_noxallow);
 #ifdef FILTER_ENABLE
 static HANDLE_FUNC (handle_filter);
 static HANDLE_FUNC (handle_filtercasesensitive);
@@ -207,6 +210,8 @@ struct {
         STDCONF (syslog, BOOL, handle_syslog),
         STDCONF (bindsame, BOOL, handle_bindsame),
         STDCONF (disableviaheader, BOOL, handle_disableviaheader),
+        STDCONF (noxpolicy, BOOL, handle_noxpolicy),
+        STDCONF (noxallow, "([^ \t]+)" WS "([^ \t]+)", handle_noxallow),
         /* integer arguments */
         STDCONF (port, INT, handle_port),
         STDCONF (maxclients, INT, handle_maxclients),
@@ -314,6 +319,7 @@ void free_config (struct config_s *conf)
 #ifdef UPSTREAM_SUPPORT
         free_upstream_list (conf->upstream_list);
 #endif                          /* UPSTREAM_SUPPORT */
+        nox_rules_free (conf->nox_rules);
         safefree (conf->pidpath);
         safefree (conf->via_proxy_name);
         if (conf->errorpages) {
@@ -505,6 +511,21 @@ int reload_config_file (const char *config_fname, struct config_s *conf)
         if (ret != 0) {
                 goto done;
         }
+#ifdef UPSTREAM_SUPPORT
+        if (conf->nox_policy && conf->upstream_list) {
+                fprintf (stderr, "NoxPolicy cannot be combined with Upstream\n");
+                ret = -1;
+                goto done;
+        }
+#endif
+#ifdef REVERSE_SUPPORT
+        if (conf->nox_policy && (conf->reversepath_list || conf->reverseonly ||
+                                 conf->reversemagic || conf->reversebaseurl)) {
+                fprintf (stderr, "NoxPolicy cannot be combined with Reverse proxy settings\n");
+                ret = -1;
+                goto done;
+        }
+#endif
 
         /* Set the default values if they were not set in the config file. */
         if (conf->port == 0) {
@@ -637,6 +658,23 @@ set_int_arg (unsigned int *var, const char *line, regmatch_t * match)
  * values to return.
  *
  ***********************************************************************/
+
+static HANDLE_FUNC (handle_noxpolicy)
+{
+        return set_bool_arg (&conf->nox_policy, line, &match[2]);
+}
+
+static HANDLE_FUNC (handle_noxallow)
+{
+        char *host = get_string_arg (line, &match[2]);
+        char *ports = get_string_arg (line, &match[3]);
+        int result = -1;
+        if (host && ports)
+                result = nox_rule_add (&conf->nox_rules, host, ports);
+        safefree (host);
+        safefree (ports);
+        return result;
+}
 
 static HANDLE_FUNC (handle_basicauthrealm)
 {

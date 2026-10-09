@@ -152,6 +152,33 @@ process ID for signaling purposes. Enclose in double quotes.
 Setting this option to `Yes` tells Tinyproxy to add a header
 `X-Tinyproxy` containing the client's IP address to the request.
 
+=item B<NoxPolicy>
+
+When set to C<Yes>, all outbound destinations are denied by default.
+Only destinations covered by a C<NoxAllow> rule can be reached. Direct
+connections use the checked DNS address without a second lookup. Upstream
+and reverse proxy settings cannot be combined with this policy; origin-form
+(transparent proxy) requests and the built-in statistics host are disabled
+while it is enabled. C<NoxPolicy No> retains standard Tinyproxy behavior.
+
+=item B<NoxAllow>
+
+Repeatable outbound rule: C<NoxAllow host-or-CIDR port-or-first-last>.
+Ports are inclusive and must be between 1 and 65535. Host globs match
+case-insensitively; C<*> matches any characters, including dots (unlike
+DNS label-specific wildcards). A trailing dot on hostnames is ignored.
+For example, C<NoxAllow *.example.com 443> permits names such as
+C<api.dev.example.com> on port 443, but not literal IP addresses.
+
+A hostname must match a host glob on the requested port. Its resolved
+address must additionally be a globally routable IP or match an explicit
+CIDR rule on that same port. Literal IPv4 and IPv6 destinations require
+an explicit CIDR rule even when publicly routable. For example,
+C<NoxAllow 192.168.10.0/24 8000-8100> permits requests to those IPs
+and permits matching hostnames that resolve to those IPs if a hostname
+rule also allows them. A bare IP is a single-address CIDR. Invalid
+rules prevent Tinyproxy from starting.
+
 =item B<Upstream>
 
 This option allows you to set up a set of rules for deciding

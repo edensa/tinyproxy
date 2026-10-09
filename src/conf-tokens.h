@@ -43,6 +43,8 @@ CD_reverseonly,
 CD_reversemagic,
 CD_reversepath,
 CD_upstream,
+CD_noxpolicy,
+CD_noxallow,
 CD_loglevel,
 };
 

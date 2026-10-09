@@ -40,6 +40,7 @@ tinyproxy_SOURCES = \
 	log.c log.h \
 	network.c network.h \
 	reqs.c reqs.h \
+	nox-policy.c nox-policy.h \
 	sock.c sock.h \
 	stats.c stats.h \
 	text.c text.h \

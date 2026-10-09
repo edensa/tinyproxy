@@ -38,6 +38,8 @@ typedef struct {
  * Hold all the configuration time information.
  */
 struct config_s {
+        unsigned int nox_policy;
+        struct nox_rule *nox_rules;
         sblist *basicauth_list;
         char *basicauth_realm;
         char *logf_name;

@@ -49,6 +49,7 @@
 #include "upstream.h"
 #include "connect-ports.h"
 #include "conf.h"
+#include "nox-policy.h"
 #include "basicauth.h"
 #include "loop.h"
 #include "mypoll.h"
@@ -406,7 +407,8 @@ BAD_REQUEST_ERROR:
         /*
          * Check to see if they're requesting the stat host
          */
-        if (is_stathost (pseudomap_find (hashofheaders, "host"))) {
+        if (!config->nox_policy &&
+            is_stathost (pseudomap_find (hashofheaders, "host"))) {
 got_stathost:
                 log_message (LOG_NOTICE, "Request for the stathost.");
                 connptr->show_stats = TRUE;
@@ -486,7 +488,7 @@ got_stathost:
                 connptr->connect_method = TRUE;
         } else {
 #ifdef TRANSPARENT_PROXY
-                if (!skip_trans) {
+                if (!config->nox_policy && !skip_trans) {
                         if (!do_transparent_proxy
                             (connptr, hashofheaders, request, config, &url))
                                 goto fail;
@@ -528,7 +530,7 @@ got_stathost:
         }
 #endif
         /* check whether hostname from url is the stathost */
-        if (is_stathost (request->host))
+        if (!config->nox_policy && is_stathost (request->host))
                 goto got_stathost;
 
         safefree (url);
@@ -1629,6 +1631,28 @@ static void auth_error(struct conn_s *connptr, int code) {
         indicate_http_error (connptr, code, tit, "detail", msg, NULL);
 }
 
+/* Never interpolate the raw request authority into log lines or HTML. */
+static void nox_deny (struct conn_s *connptr, const char *host, int port)
+{
+        char destination[280], detail[320];
+        size_t i = 0, j = 0;
+        int bracket = strchr (host, ':') != NULL;
+        if (bracket) destination[j++] = '[';
+        while (host[i] && i < 253 && j < sizeof (destination) - 10) {
+                unsigned char c = (unsigned char) host[i++];
+                destination[j++] = (isalnum (c) && c < 128) ||
+                                   c == '.' || c == '-' || c == '_' || c == ':' ?
+                                   c : '_';
+        }
+        if (bracket) destination[j++] = ']';
+        snprintf (destination + j, sizeof (destination) - j, ":%d", port);
+        snprintf (detail, sizeof (detail), "Destination denied by nox: %s",
+                  destination);
+        fprintf (stderr, "NOX_DENY %s\n", destination);
+        update_stats (STAT_DENIED);
+        indicate_http_error (connptr, 403, "Access denied", "detail", detail, NULL);
+}
+
 /*
  * This is the main drive for each connection.
  * this function is called directly from child_thread() with the newly
@@ -1772,6 +1796,11 @@ void handle_connection (struct conn_s *connptr, union sockaddr_union* addr)
                 }
                 HC_FAIL();
         }
+        if (config->nox_policy &&
+            !nox_host_allowed (config->nox_rules, request->host, request->port)) {
+                nox_deny (connptr, request->host, request->port);
+                HC_FAIL();
+        }
 
         connptr->upstream_proxy = UPSTREAM_HOST (request->host);
         if (connptr->upstream_proxy != NULL) {
@@ -1779,9 +1808,16 @@ void handle_connection (struct conn_s *connptr, union sockaddr_union* addr)
                         HC_FAIL();
                 }
         } else {
-                connptr->server_fd = opensock (request->host, request->port,
-                                               connptr->server_ip_addr);
+                connptr->server_fd = config->nox_policy ?
+                    opensock_policy (request->host, request->port,
+                                     connptr->server_ip_addr) :
+                    opensock (request->host, request->port,
+                              connptr->server_ip_addr);
                 if (connptr->server_fd < 0) {
+                        if (config->nox_policy && errno == EACCES) {
+                                nox_deny (connptr, request->host, request->port);
+                                HC_FAIL();
+                        }
                         indicate_http_error (connptr, 500, "Unable to connect",
                                              "detail",
                                              PACKAGE_NAME " "
