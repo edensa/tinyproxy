@@ -40,6 +40,7 @@ typedef struct {
 struct config_s {
         unsigned int nox_policy;
         struct nox_rule *nox_rules;
+        struct nox_rule *nox_deny_rules;
         sblist *basicauth_list;
         char *basicauth_realm;
         char *logf_name;

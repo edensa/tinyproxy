@@ -1810,7 +1810,8 @@ void handle_connection (struct conn_s *connptr, union sockaddr_union* addr)
                 HC_FAIL();
         }
         if (config->nox_policy &&
-            !nox_host_allowed (config->nox_rules, request->host, request->port)) {
+            !nox_host_allowed (config->nox_rules, config->nox_deny_rules,
+                               request->host, request->port)) {
                 nox_deny (connptr, request->host, request->port);
                 HC_FAIL();
         }

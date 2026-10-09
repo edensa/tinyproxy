@@ -60,6 +60,7 @@ config_directive_find (register const char *str, register size_t len)
       {"basicauthrealm", CD_basicauthrealm},
       {"noxpolicy", CD_noxpolicy},
       {"noxallow", CD_noxallow},
+      {"noxdeny", CD_noxdeny},
       {"addheader", CD_addheader},
       {"maxrequestsperchild", CD_maxrequestsperchild}
     };

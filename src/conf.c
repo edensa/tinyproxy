@@ -134,6 +134,7 @@ static HANDLE_FUNC (handle_errorfile);
 static HANDLE_FUNC (handle_addheader);
 static HANDLE_FUNC (handle_noxpolicy);
 static HANDLE_FUNC (handle_noxallow);
+static HANDLE_FUNC (handle_noxdeny);
 #ifdef FILTER_ENABLE
 static HANDLE_FUNC (handle_filter);
 static HANDLE_FUNC (handle_filtercasesensitive);
@@ -212,6 +213,7 @@ struct {
         STDCONF (disableviaheader, BOOL, handle_disableviaheader),
         STDCONF (noxpolicy, BOOL, handle_noxpolicy),
         STDCONF (noxallow, "([^ \t]+)" WS "([^ \t]+)", handle_noxallow),
+        STDCONF (noxdeny, "([^ \t]+)" WS "([^ \t]+)", handle_noxdeny),
         /* integer arguments */
         STDCONF (port, INT, handle_port),
         STDCONF (maxclients, INT, handle_maxclients),
@@ -320,6 +322,7 @@ void free_config (struct config_s *conf)
         free_upstream_list (conf->upstream_list);
 #endif                          /* UPSTREAM_SUPPORT */
         nox_rules_free (conf->nox_rules);
+        nox_rules_free (conf->nox_deny_rules);
         safefree (conf->pidpath);
         safefree (conf->via_proxy_name);
         if (conf->errorpages) {
@@ -671,6 +674,18 @@ static HANDLE_FUNC (handle_noxallow)
         int result = -1;
         if (host && ports)
                 result = nox_rule_add (&conf->nox_rules, host, ports);
+        safefree (host);
+        safefree (ports);
+        return result;
+}
+
+static HANDLE_FUNC (handle_noxdeny)
+{
+        char *host = get_string_arg (line, &match[2]);
+        char *ports = get_string_arg (line, &match[3]);
+        int result = -1;
+        if (host && ports)
+                result = nox_rule_add (&conf->nox_deny_rules, host, ports);
         safefree (host);
         safefree (ports);
         return result;

@@ -45,6 +45,7 @@ CD_reversepath,
 CD_upstream,
 CD_noxpolicy,
 CD_noxallow,
+CD_noxdeny,
 CD_loglevel,
 };
 

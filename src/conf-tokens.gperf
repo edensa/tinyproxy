@@ -60,6 +60,7 @@ reversepath, CD_reversepath
 upstream, CD_upstream
 noxpolicy, CD_noxpolicy
 noxallow, CD_noxallow
+noxdeny, CD_noxdeny
 loglevel, CD_loglevel
 %%
 

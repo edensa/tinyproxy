@@ -51,10 +51,11 @@ class NoxPolicyTest(unittest.TestCase):
         self.addCleanup(self.tmp.cleanup)
         self.proxy_port = free_port()
 
-    def launch(self, rules):
+    def launch(self, rules, policy=True):
         config = pathlib.Path(self.tmp.name) / 'tinyproxy.conf'
         config.write_text(f'Port {self.proxy_port}\nListen 127.0.0.1\n'
-                          f'ConnectPort {self.target_port}\nNoxPolicy Yes\n{rules}\n')
+                          f'ConnectPort {self.target_port}\n'
+                          f'NoxPolicy {"Yes" if policy else "No"}\n{rules}\n')
         process = subprocess.Popen([BINARY, '-d', '-c', str(config)],
                                    stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         self.addCleanup(self.stop, process)
@@ -122,10 +123,56 @@ class NoxPolicyTest(unittest.TestCase):
         self.launch(f'NoxAllow 127.0.0.0/8 1-2')
         self.assertIn(b' 403 ', self.request('127.0.0.1').split(b'\r\n', 1)[0])
 
+    def test_hostname_deny_precedes_broad_allow_for_http_and_connect(self):
+        self.launch(f'NoxDeny *HOST. {self.target_port}-{self.target_port}\n'
+                    f'NoxAllow *host 1-65535\n'
+                    f'NoxAllow 127.0.0.0/8 1-65535')
+        for method in ('GET', 'CONNECT'):
+            for hostname in ('localhost', 'LOCALHOST.'):
+                with self.subTest(method=method, hostname=hostname):
+                    self.assertIn(b' 403 ', self.request(hostname, method).split(b'\r\n', 1)[0])
+            self.assertIn(b'nox policy target', self.request('127.0.0.1', method))
+
+    def test_cidr_deny_blocks_literal_and_hostname_dns_candidate(self):
+        self.launch(f'NoxAllow localhost 1-65535\n'
+                    f'NoxAllow 127.0.0.0/8 1-65535\n'
+                    f'NoxDeny 127.0.0.0/8 {self.target_port}\n'
+                    f'NoxDeny ::1/128 {self.target_port}')
+        for method in ('GET', 'CONNECT'):
+            for hostname in ('127.0.0.1', 'localhost'):
+                with self.subTest(method=method, hostname=hostname):
+                    self.assertIn(b' 403 ', self.request(hostname, method).split(b'\r\n', 1)[0])
+
+    def test_deny_port_range_does_not_block_other_ports_or_grant_access(self):
+        self.launch(f'NoxAllow localhost {self.target_port}\n'
+                    f'NoxAllow 127.0.0.0/8 {self.target_port}\n'
+                    'NoxDeny localhost 1-2\n'
+                    'NoxDeny 127.0.0.0/8 1-2')
+        for method in ('GET', 'CONNECT'):
+            self.assertIn(b'nox policy target', self.request('localhost', method))
+            self.assertIn(b'nox policy target', self.request('127.0.0.1', method))
+
+    def test_deny_without_allow_never_grants_access(self):
+        self.launch(f'NoxDeny localhost {self.target_port}')
+        for method in ('GET', 'CONNECT'):
+            self.assertIn(b' 403 ', self.request('127.0.0.1', method).split(b'\r\n', 1)[0])
+
+    def test_stock_proxy_ignores_nox_rules_when_policy_disabled(self):
+        self.launch(f'NoxDeny localhost {self.target_port}\n'
+                    f'NoxDeny 127.0.0.0/8 {self.target_port}', policy=False)
+        for method in ('GET', 'CONNECT'):
+            self.assertIn(b'nox policy target', self.request('localhost', method))
+            self.assertIn(b'nox policy target', self.request('127.0.0.1', method))
+
     def test_invalid_rules_and_upstream_fail_start(self):
         for rule in ('NoxAllow *.example.org 0', 'NoxAllow 127.0.0.0/33 443',
                      'NoxAllow localhost 3-2', 'NoxAllow / 443',
                      'NoxAllow 2001:db8::/129 443',
+                     'NoxDeny localhost 0', 'NoxDeny localhost 65536',
+                     'NoxDeny localhost 443-80', 'NoxDeny localhost 443-',
+                     'NoxDeny localhost 443-65536', 'NoxDeny 127.0.0.0/33 443',
+                     'NoxDeny ::1/129 443', 'NoxDeny foo?bar 443',
+                     'NoxDeny localhost', 'NoxDeny localhost 443 extra',
                      'Upstream http 127.0.0.1:12345'):
             with self.subTest(rule=rule):
                 config = pathlib.Path(self.tmp.name) / 'bad.conf'

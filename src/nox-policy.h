@@ -15,10 +15,12 @@ struct nox_rule {
 /* Returns -1 on invalid input, including invalid glob, CIDR or port. */
 int nox_rule_add (struct nox_rule **rules, const char *host, const char *ports);
 void nox_rules_free (struct nox_rule *rules);
-/* Checks host syntax and permits hostname globs; literal IPs require a CIDR. */
-int nox_host_allowed (const struct nox_rule *rules, const char *host, int port);
-/* Checks the pinned DNS candidate; private addresses require an explicit CIDR. */
-int nox_address_allowed (const struct nox_rule *rules, const char *host,
-                         int port, const struct sockaddr *address);
+/* Deny always wins over allow for the requested hostname or literal. */
+int nox_host_allowed (const struct nox_rule *allow, const struct nox_rule *deny,
+                      const char *host, int port);
+/* Checks each pinned DNS candidate; deny CIDRs take precedence over allows. */
+int nox_address_allowed (const struct nox_rule *allow, const struct nox_rule *deny,
+                         const char *host, int port,
+                         const struct sockaddr *address);
 
 #endif

@@ -143,7 +143,9 @@ static int opensock_impl (const char *host, int port, const char *bind_to,
         int permitted = 0, last_error = 0;
 
         assert (host != NULL);
-        if (policy && !nox_host_allowed (config->nox_rules, host, port)) {
+        if (policy &&
+            !nox_host_allowed (config->nox_rules, config->nox_deny_rules,
+                               host, port)) {
                 errno = EACCES;
                 return -1;
         }
@@ -170,8 +172,9 @@ static int opensock_impl (const char *host, int port, const char *bind_to,
 
         ressave = res;
         do {
-                if (policy && !nox_address_allowed (config->nox_rules, host,
-                                                    port, res->ai_addr))
+                if (policy &&
+                    !nox_address_allowed (config->nox_rules, config->nox_deny_rules,
+                                          host, port, res->ai_addr))
                         continue;
                 permitted = 1;
                 sockfd =

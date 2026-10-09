@@ -200,37 +200,53 @@ static int global_address (int family, const unsigned char *a)
         return 1;
 }
 
-int nox_host_allowed (const struct nox_rule *rules, const char *host, int port)
+static int host_matches (const struct nox_rule *rules, const char *host,
+                         int family, const unsigned char *ip, int port)
 {
-        unsigned char ip[16];
-        int family = classify (host, ip);
         size_t len, i;
+        int is_hostname = family == 1 ||
+                          ((host[0] == 'l' || host[0] == 'L') &&
+                           (!strcasecmp (host, "localhost") ||
+                            !strcasecmp (host, "localhost.")));
         char normalized[254];
-        if (!family || port < 1 || port > 65535) return 0;
-        if (family != 1) {
-                for (; rules; rules = rules->next)
-                        if (rules->family && port >= rules->first_port &&
-                            port <= rules->last_port && cidr_match (rules, family, ip))
-                                return 1;
-                return 0;
+        if (!rules) return 0;
+        if (is_hostname) {
+                len = strlen (host);
+                if (host[len - 1] == '.') --len;
+                for (i = 0; i < len; ++i)
+                        normalized[i] = tolower ((unsigned char) host[i]);
+                normalized[len] = '\0';
         }
-        len = strlen (host);
-        if (host[len - 1] == '.') --len;
-        for (i = 0; i < len; ++i)
-                normalized[i] = tolower ((unsigned char) host[i]);
-        normalized[len] = '\0';
-        for (; rules; rules = rules->next)
-                if (!rules->family && port >= rules->first_port &&
-                    port <= rules->last_port &&
-                    fnmatch (rules->host, normalized, 0) == 0) return 1;
+        for (; rules; rules = rules->next) {
+                if (port < rules->first_port || port > rules->last_port)
+                        continue;
+                if (is_hostname && !rules->family &&
+                    fnmatch (rules->host, normalized, 0) == 0)
+                        return 1;
+                if (family != 1 && rules->family &&
+                    cidr_match (rules, family, ip))
+                        return 1;
+        }
         return 0;
 }
 
-int nox_address_allowed (const struct nox_rule *rules, const char *host,
-                         int port, const struct sockaddr *address)
+int nox_host_allowed (const struct nox_rule *allow, const struct nox_rule *deny,
+                      const char *host, int port)
+{
+        unsigned char ip[16];
+        int family = classify (host, ip);
+        if (!family || port < 1 || port > 65535) return 0;
+        if (host_matches (deny, host, family, ip, port)) return 0;
+        return host_matches (allow, host, family, ip, port);
+}
+
+int nox_address_allowed (const struct nox_rule *allow, const struct nox_rule *deny,
+                         const char *host, int port,
+                         const struct sockaddr *address)
 {
         unsigned char host_ip[16];
         const unsigned char *ip;
+        const struct nox_rule *rule;
         int family = address->sa_family, host_family = classify (host, host_ip);
         if (family == AF_INET)
                 ip = (const unsigned char *) &((const struct sockaddr_in *) address)->sin_addr;
@@ -239,10 +255,14 @@ int nox_address_allowed (const struct nox_rule *rules, const char *host,
                 if (v6->sin6_scope_id) return 0;
                 ip = (const unsigned char *) &v6->sin6_addr;
         } else return 0;
+        for (rule = deny; rule; rule = rule->next)
+                if (rule->family && port >= rule->first_port &&
+                    port <= rule->last_port && cidr_match (rule, family, ip))
+                        return 0;
         if (host_family == 1 && global_address (family, ip)) return 1;
-        for (; rules; rules = rules->next)
-                if (rules->family && port >= rules->first_port &&
-                    port <= rules->last_port && cidr_match (rules, family, ip) &&
+        for (rule = allow; rule; rule = rule->next)
+                if (rule->family && port >= rule->first_port &&
+                    port <= rule->last_port && cidr_match (rule, family, ip) &&
                     /* A literal must match the chosen address too. */
                     (host_family == 1 ||
                      (host_family == family && !memcmp (host_ip, ip, family == AF_INET ? 4 : 16)) ||
