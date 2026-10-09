@@ -1631,12 +1631,12 @@ static void auth_error(struct conn_s *connptr, int code) {
         indicate_http_error (connptr, code, tit, "detail", msg, NULL);
 }
 
-/* Never interpolate the raw request authority into log lines or HTML. */
+/* Never interpolate the raw request authority into logs or response bodies. */
 static void nox_deny (struct conn_s *connptr, const char *host, int port)
 {
-        char destination[280], detail[320];
-        size_t i = 0, j = 0;
-        int bracket = strchr (host, ':') != NULL;
+        char destination[280], detail[320], headers[256];
+        size_t i = 0, j = 0, body_len;
+        int header_len, bracket = strchr (host, ':') != NULL;
         if (bracket) destination[j++] = '[';
         while (host[i] && i < 253 && j < sizeof (destination) - 10) {
                 unsigned char c = (unsigned char) host[i++];
@@ -1650,7 +1650,20 @@ static void nox_deny (struct conn_s *connptr, const char *host, int port)
                   destination);
         fprintf (stderr, "NOX_DENY %s\n", destination);
         update_stats (STAT_DENIED);
-        indicate_http_error (connptr, 403, "Access denied", "detail", detail, NULL);
+        /* The normal tinyproxy error renderer emits an XHTML document.  OMP
+         * displays that entire document as a model error, so policy denials
+         * use a minimal text/plain response instead. */
+        body_len = strlen (detail);
+        header_len = snprintf (headers, sizeof headers,
+                                   "HTTP/1.1 403 Forbidden\r\n"
+                                   "Content-Type: text/plain; charset=utf-8\r\n"
+                                   "Content-Length: %zu\r\n"
+                                   "Connection: close\r\n\r\n", body_len + 1);
+        if (header_len > 0 && (size_t) header_len < sizeof headers) {
+                safe_write (connptr->client_fd, headers, header_len);
+                safe_write (connptr->client_fd, detail, body_len);
+                safe_write (connptr->client_fd, "\n", 1);
+        }
 }
 
 /*
